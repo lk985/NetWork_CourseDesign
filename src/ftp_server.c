@@ -119,7 +119,7 @@ static int handle_put(SOCKET client_socket, const char *path)
     }
 
     for (;;) {
-        received = nw_recv_some(client_socket, &header, sizeof(header));
+        received = nw_recv_exact(client_socket, &header, sizeof(header));
         if (received != (nw_ssize_t)sizeof(header)) {
             fclose(file);
             return -1;
@@ -132,7 +132,7 @@ static int handle_put(SOCKET client_socket, const char *path)
         }
 
         if (payload_length > 0) {
-            received = nw_recv_some(client_socket, buffer, payload_length);
+            received = nw_recv_exact(client_socket, buffer, payload_length);
             if (received != (nw_ssize_t)payload_length) {
                 fclose(file);
                 return -1;

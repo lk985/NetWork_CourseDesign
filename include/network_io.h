@@ -49,9 +49,23 @@ int nw_bind_socket(SOCKET socket_handle, const char *host, unsigned short port);
 int nw_listen_socket(SOCKET socket_handle, int backlog);
 SOCKET nw_accept_socket(SOCKET server_socket, nw_endpoint_t *client_endpoint);
 int nw_connect_socket(SOCKET socket_handle, const char *host, unsigned short port);
+int nw_resolve_ipv4(const char *host, char *output, size_t output_size);
 
 nw_ssize_t nw_send_all(SOCKET socket_handle, const void *buffer, size_t length);
 nw_ssize_t nw_recv_some(SOCKET socket_handle, void *buffer, size_t length);
+nw_ssize_t nw_recv_exact(SOCKET socket_handle, void *buffer, size_t length);
+nw_ssize_t nw_send_raw_bytes(
+    SOCKET socket_handle,
+    const void *buffer,
+    size_t length,
+    const char *host
+);
+nw_ssize_t nw_recv_raw_bytes(
+    SOCKET socket_handle,
+    void *buffer,
+    size_t length,
+    nw_endpoint_t *remote_endpoint
+);
 nw_ssize_t nw_sendto_endpoint(
     SOCKET socket_handle,
     const void *buffer,
@@ -68,6 +82,7 @@ nw_ssize_t nw_recvfrom_endpoint(
 
 int nw_set_nonblocking(SOCKET socket_handle, unsigned long enabled);
 int nw_set_socket_timeout(SOCKET socket_handle, DWORD recv_timeout_ms, DWORD send_timeout_ms);
+int nw_set_ip_header_included(SOCKET socket_handle, int enabled);
 int nw_set_promiscuous_mode(SOCKET socket_handle, const char *local_ipv4);
 void nw_close_socket(SOCKET socket_handle);
 

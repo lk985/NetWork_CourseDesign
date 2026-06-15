@@ -46,6 +46,46 @@ static int fill_sockaddr_in(struct sockaddr_in *address, const char *host, unsig
     return 0;
 }
 
+int nw_resolve_ipv4(const char *host, char *output, size_t output_size)
+{
+    struct sockaddr_in *ipv4_address;
+    struct addrinfo hints;
+    struct addrinfo *result;
+    int status;
+
+    if (host == NULL || output == NULL || output_size == 0) {
+        return SOCKET_ERROR;
+    }
+
+    if (strcmp(host, "localhost") == 0) {
+        strncpy(output, "127.0.0.1", output_size - 1U);
+        output[output_size - 1U] = '\0';
+        return 0;
+    }
+
+    if (inet_addr(host) != INADDR_NONE || strcmp(host, "255.255.255.255") == 0) {
+        strncpy(output, host, output_size - 1U);
+        output[output_size - 1U] = '\0';
+        return 0;
+    }
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_RAW;
+    hints.ai_protocol = IPPROTO_ICMP;
+
+    result = NULL;
+    status = getaddrinfo(host, NULL, &hints, &result);
+    if (status != 0 || result == NULL) {
+        return SOCKET_ERROR;
+    }
+
+    ipv4_address = (struct sockaddr_in *)result->ai_addr;
+    status = copy_ipv4_string(&ipv4_address->sin_addr, output, output_size);
+    freeaddrinfo(result);
+    return status;
+}
+
 int nw_init_winsock(void)
 {
     WSADATA data;
@@ -247,6 +287,59 @@ nw_ssize_t nw_recv_some(SOCKET socket_handle, void *buffer, size_t length)
     return (nw_ssize_t)recv(socket_handle, (char *)buffer, (int)length, 0);
 }
 
+nw_ssize_t nw_recv_exact(SOCKET socket_handle, void *buffer, size_t length)
+{
+    char *cursor;
+    size_t received_total;
+    int received_now;
+
+    cursor = (char *)buffer;
+    received_total = 0;
+
+    while (received_total < length) {
+        received_now = recv(socket_handle, cursor + received_total, (int)(length - received_total), 0);
+        if (received_now == SOCKET_ERROR || received_now == 0) {
+            return -1;
+        }
+        received_total += (size_t)received_now;
+    }
+
+    return (nw_ssize_t)received_total;
+}
+
+nw_ssize_t nw_send_raw_bytes(
+    SOCKET socket_handle,
+    const void *buffer,
+    size_t length,
+    const char *host
+)
+{
+    struct sockaddr_in address;
+
+    if (fill_sockaddr_in(&address, host, 0) != 0) {
+        return -1;
+    }
+
+    return (nw_ssize_t)sendto(
+        socket_handle,
+        (const char *)buffer,
+        (int)length,
+        0,
+        (const struct sockaddr *)&address,
+        (int)sizeof(address)
+    );
+}
+
+nw_ssize_t nw_recv_raw_bytes(
+    SOCKET socket_handle,
+    void *buffer,
+    size_t length,
+    nw_endpoint_t *remote_endpoint
+)
+{
+    return nw_recvfrom_endpoint(socket_handle, buffer, length, remote_endpoint);
+}
+
 nw_ssize_t nw_sendto_endpoint(
     SOCKET socket_handle,
     const void *buffer,
@@ -317,6 +410,17 @@ int nw_set_socket_timeout(SOCKET socket_handle, DWORD recv_timeout_ms, DWORD sen
         status = setsockopt(socket_handle, SOL_SOCKET, SO_SNDTIMEO, (const char *)&send_timeout_ms, sizeof(send_timeout_ms));
     }
     return status;
+}
+
+int nw_set_ip_header_included(SOCKET socket_handle, int enabled)
+{
+    return setsockopt(
+        socket_handle,
+        IPPROTO_IP,
+        IP_HDRINCL,
+        (const char *)&enabled,
+        sizeof(enabled)
+    );
 }
 
 int nw_set_promiscuous_mode(SOCKET socket_handle, const char *local_ipv4)

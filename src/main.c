@@ -4,6 +4,7 @@
 
 #include "datalink_sim.h"
 #include "ftp_app.h"
+#include "network_io.h"
 #include "utils.h"
 
 static void print_usage(const char *program_name)
@@ -39,6 +40,50 @@ static int run_datalink_demo(void)
     return status;
 }
 
+static int run_ping_preflight(const char *host, int continuous_mode)
+{
+    SOCKET raw_socket;
+    char resolved_ipv4[64];
+    int init_status;
+
+    init_status = nw_init_winsock();
+    if (init_status != 0) {
+        log_socket_error("WSAStartup", init_status);
+        return 1;
+    }
+
+    if (nw_resolve_ipv4(host, resolved_ipv4, sizeof(resolved_ipv4)) != 0) {
+        log_message(LOG_LEVEL_ERROR, "failed to resolve target host: %s", host);
+        nw_cleanup_winsock();
+        return 1;
+    }
+
+    raw_socket = nw_create_raw_ipv4_socket(IPPROTO_ICMP);
+    if (raw_socket == INVALID_SOCKET) {
+        log_message(
+            LOG_LEVEL_ERROR,
+            "failed to create raw ICMP socket for %s (%s), error=%d",
+            host,
+            resolved_ipv4,
+            nw_last_error()
+        );
+        log_message(LOG_LEVEL_WARN, "raw socket usually requires administrator privileges on Windows");
+        nw_cleanup_winsock();
+        return 1;
+    }
+
+    printf("ping preflight ready\n");
+    printf("target host: %s\n", host);
+    printf("target ipv4: %s\n", resolved_ipv4);
+    printf("socket type: raw icmp\n");
+    printf("mode: %s\n", continuous_mode ? "continuous (-t)" : "4 probes");
+    printf("status: lower-level socket path is available, ICMP packet build is the next step\n");
+
+    nw_close_socket(raw_socket);
+    nw_cleanup_winsock();
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -72,8 +117,15 @@ int main(int argc, char *argv[])
     }
 
     if (strcmp(argv[1], "ping") == 0) {
-        log_message(LOG_LEVEL_WARN, "ping module is reserved for the next implementation step");
-        return 0;
+        if (argc != 3 && argc != 4) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        if (argc == 4 && strcmp(argv[3], "-t") != 0) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        return run_ping_preflight(argv[2], argc == 4);
     }
 
     if (strcmp(argv[1], "capture") == 0) {

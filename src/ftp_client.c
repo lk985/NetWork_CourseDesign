@@ -66,7 +66,7 @@ static int handle_get(SOCKET socket_handle, const char *remote_path)
     }
 
     for (;;) {
-        if (nw_recv_some(socket_handle, &header, sizeof(header)) != (nw_ssize_t)sizeof(header)) {
+        if (nw_recv_exact(socket_handle, &header, sizeof(header)) != (nw_ssize_t)sizeof(header)) {
             fclose(file);
             return -1;
         }
@@ -78,7 +78,7 @@ static int handle_get(SOCKET socket_handle, const char *remote_path)
         }
 
         if (payload_length > 0 &&
-            nw_recv_some(socket_handle, buffer, payload_length) != (nw_ssize_t)payload_length) {
+            nw_recv_exact(socket_handle, buffer, payload_length) != (nw_ssize_t)payload_length) {
             fclose(file);
             return -1;
         }

@@ -5,7 +5,7 @@
 - Ping命令框架
 - 基于TCP的类FTP客户端/服务器用于二进制传输-
 - 数据包头定义和解析辅助工具
--  Datalink停止等待/GBN模拟骨架
+- Datalink停止等待/GBN模拟骨架
 
 ## Build
 
