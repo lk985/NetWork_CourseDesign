@@ -1,0 +1,9 @@
+# 编译产物
+build/
+build-gcc/
+*.obj
+*.exe
+*.ninja
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake

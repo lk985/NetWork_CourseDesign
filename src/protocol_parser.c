@@ -6,6 +6,8 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 
+#include "utils.h"
+
 int ipv4_get_version(const ipv4_header_t *header)
 {
     return (header == NULL) ? -1 : ((header->version_ihl >> 4) & 0x0F);
@@ -101,6 +103,80 @@ packet_parse_result_t parse_ethernet_ipv4_packet(
     }
 
     return PACKET_PARSE_OK;
+}
+
+size_t build_icmp_echo_packet(
+    uint8_t *buffer,
+    size_t buffer_size,
+    uint16_t identifier,
+    uint16_t sequence_number,
+    const void *payload,
+    size_t payload_length
+)
+{
+    icmp_header_t *header;
+    size_t total_length;
+
+    total_length = sizeof(icmp_header_t) + payload_length;
+    if (buffer == NULL || buffer_size < total_length) {
+        return 0;
+    }
+
+    memset(buffer, 0, total_length);
+    header = (icmp_header_t *)buffer;
+    header->type = ICMP_ECHO_REQUEST;
+    header->code = 0;
+    header->identifier = htons(identifier);
+    header->sequence_number = htons(sequence_number);
+
+    if (payload != NULL && payload_length > 0) {
+        memcpy(buffer + sizeof(icmp_header_t), payload, payload_length);
+    }
+
+    header->checksum = 0;
+    header->checksum = compute_internet_checksum(buffer, total_length);
+    return total_length;
+}
+
+int parse_icmp_echo_reply(
+    const uint8_t *buffer,
+    size_t buffer_length,
+    uint16_t expected_identifier,
+    uint16_t *sequence_number
+)
+{
+    const ipv4_header_t *ipv4;
+    const icmp_header_t *icmp;
+    size_t ip_header_length;
+
+    if (buffer == NULL || buffer_length < sizeof(ipv4_header_t) + sizeof(icmp_header_t)) {
+        return 0;
+    }
+
+    ipv4 = (const ipv4_header_t *)buffer;
+    if (ipv4_get_version(ipv4) != 4 || ipv4->protocol != IP_PROTO_ICMP) {
+        return 0;
+    }
+
+    ip_header_length = (size_t)ipv4_get_header_length(ipv4);
+    if (buffer_length < ip_header_length + sizeof(icmp_header_t)) {
+        return 0;
+    }
+
+    icmp = (const icmp_header_t *)(buffer + ip_header_length);
+    if (icmp->type != ICMP_ECHO_REPLY || icmp->code != 0) {
+        return 0;
+    }
+
+    if (ntohs(icmp->identifier) != expected_identifier) {
+        return 0;
+    }
+
+    if (sequence_number != NULL) {
+        *sequence_number = ntohs(icmp->sequence_number);
+    }
+
+    return 1;
 }
 
 void format_mac_address(const uint8_t address[ETH_ADDR_LEN], char *output, size_t output_size)

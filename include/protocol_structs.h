@@ -16,6 +16,7 @@
 
 #define ICMP_ECHO_REPLY   0u
 #define ICMP_ECHO_REQUEST 8u
+#define ICMP_DEFAULT_DATA_SIZE 32u
 
 #define FTP_MAX_COMMAND_LEN 512
 #define FTP_MAX_PATH_LEN    260
@@ -114,6 +115,22 @@ packet_parse_result_t parse_ethernet_ipv4_packet(
     const uint8_t *buffer,
     size_t buffer_length,
     parsed_packet_t *packet
+);
+
+size_t build_icmp_echo_packet(
+    uint8_t *buffer,
+    size_t buffer_size,
+    uint16_t identifier,
+    uint16_t sequence_number,
+    const void *payload,
+    size_t payload_length
+);
+
+int parse_icmp_echo_reply(
+    const uint8_t *buffer,
+    size_t buffer_length,
+    uint16_t expected_identifier,
+    uint16_t *sequence_number
 );
 
 void format_mac_address(const uint8_t address[ETH_ADDR_LEN], char *output, size_t output_size);
