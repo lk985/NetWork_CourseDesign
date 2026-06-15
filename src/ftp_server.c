@@ -7,6 +7,8 @@
 
 #include "utils.h"
 
+#define FTP_DIR_RESPONSE_SIZE 1024
+
 static int send_text_line(SOCKET socket_handle, const char *text)
 {
     char buffer[1024];
@@ -56,7 +58,52 @@ static int handle_pwd(SOCKET client_socket)
 
 static int handle_dir(SOCKET client_socket)
 {
-    return send_text_line(client_socket, "DIR command placeholder: list current directory with Win32 API in next step");
+    WIN32_FIND_DATAA find_data;
+    HANDLE find_handle;
+    char response[FTP_DIR_RESPONSE_SIZE];
+    size_t used;
+
+    memset(response, 0, sizeof(response));
+    strncpy(response, "DIR ", sizeof(response) - 1U);
+    used = strlen(response);
+
+    find_handle = FindFirstFileA(".\\*", &find_data);
+    if (find_handle == INVALID_HANDLE_VALUE) {
+        return send_text_line(client_socket, "ERR failed to list directory");
+    }
+
+    do {
+        size_t name_length;
+
+        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+
+        name_length = strlen(find_data.cFileName);
+        if (used + name_length + 4U >= sizeof(response)) {
+            strncpy(response + used, "...", sizeof(response) - used - 1U);
+            break;
+        }
+
+        strncpy(response + used, find_data.cFileName, sizeof(response) - used - 1U);
+        used += name_length;
+
+        if ((find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0U) {
+            strncpy(response + used, "/", sizeof(response) - used - 1U);
+            used += 1U;
+        }
+
+        strncpy(response + used, " ", sizeof(response) - used - 1U);
+        used += 1U;
+    } while (FindNextFileA(find_handle, &find_data) != 0);
+
+    FindClose(find_handle);
+
+    if (used == 4U) {
+        return send_text_line(client_socket, "DIR <empty>");
+    }
+
+    return send_text_line(client_socket, response);
 }
 
 static int handle_get(SOCKET client_socket, const char *path)
@@ -66,6 +113,10 @@ static int handle_get(SOCKET client_socket, const char *path)
     ftp_data_header_t header;
     size_t read_size;
     uint32_t sequence_number;
+
+    if (path == NULL || path[0] == '\0') {
+        return send_text_line(client_socket, "ERR missing file name, usage: get <file>");
+    }
 
     file = fopen(path, "rb");
     if (file == NULL) {
@@ -107,6 +158,10 @@ static int handle_put(SOCKET client_socket, const char *path)
     uint8_t buffer[FTP_DATA_CHUNK_SIZE];
     nw_ssize_t received;
     uint32_t payload_length;
+
+    if (path == NULL || path[0] == '\0') {
+        return send_text_line(client_socket, "ERR missing file name, usage: put <file>");
+    }
 
     file = fopen(path, "wb");
     if (file == NULL) {

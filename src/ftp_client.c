@@ -50,6 +50,11 @@ static int handle_get(SOCKET socket_handle, const char *remote_path)
     uint8_t buffer[FTP_DATA_CHUNK_SIZE];
     uint32_t payload_length;
 
+    if (remote_path == NULL || remote_path[0] == '\0') {
+        printf("usage: get <file>\n");
+        return 0;
+    }
+
     snprintf(command_line, sizeof(command_line), "get %s", remote_path);
     if (send_line(socket_handle, command_line) != 0 || recv_line(socket_handle, response, sizeof(response)) != 0) {
         return -1;
@@ -103,6 +108,11 @@ static int handle_put(SOCKET socket_handle, const char *local_path)
     uint8_t buffer[FTP_DATA_CHUNK_SIZE];
     size_t read_size;
     uint32_t sequence_number;
+
+    if (local_path == NULL || local_path[0] == '\0') {
+        printf("usage: put <file>\n");
+        return 0;
+    }
 
     snprintf(command_line, sizeof(command_line), "put %s", local_path);
     if (send_line(socket_handle, command_line) != 0 || recv_line(socket_handle, response, sizeof(response)) != 0) {
@@ -169,6 +179,8 @@ int ftp_client_run(const char *host, unsigned short port)
     if (recv_line(client_socket, response, sizeof(response)) == 0) {
         printf("%s\n", response);
     }
+
+    printf("Type 'help' to view commands.\n");
 
     for (;;) {
         printf("ftp> ");
