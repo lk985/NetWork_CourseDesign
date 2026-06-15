@@ -1,0 +1,8 @@
+This is a sample file for the FTP course design demo.
+You can upload it with:
+put data\ftp_sample.txt
+
+You can download it back with:
+get ftp_sample.txt
+
+If the file transfer works, the downloaded file should match this content exactly.

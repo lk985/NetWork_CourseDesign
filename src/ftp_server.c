@@ -9,6 +9,25 @@
 
 #define FTP_DIR_RESPONSE_SIZE 1024
 
+static const char *ftp_last_path_component(const char *path)
+{
+    const char *cursor;
+    const char *last_component;
+
+    if (path == NULL || path[0] == '\0') {
+        return path;
+    }
+
+    last_component = path;
+    for (cursor = path; *cursor != '\0'; ++cursor) {
+        if (*cursor == '\\' || *cursor == '/') {
+            last_component = cursor + 1;
+        }
+    }
+
+    return last_component;
+}
+
 static int send_text_line(SOCKET socket_handle, const char *text)
 {
     char buffer[1024];
@@ -113,6 +132,7 @@ static int handle_get(SOCKET client_socket, const char *path)
     ftp_data_header_t header;
     size_t read_size;
     uint32_t sequence_number;
+    size_t total_bytes;
 
     if (path == NULL || path[0] == '\0') {
         return send_text_line(client_socket, "ERR missing file name, usage: get <file>");
@@ -129,12 +149,14 @@ static int handle_get(SOCKET client_socket, const char *path)
     }
 
     sequence_number = 0;
+    total_bytes = 0;
     for (;;) {
         read_size = fread(buffer, 1, sizeof(buffer), file);
         memset(&header, 0, sizeof(header));
         header.sequence_number = htonl(sequence_number++);
         header.payload_length = htonl((uint32_t)read_size);
         header.is_last_chunk = feof(file) ? 1U : 0U;
+        total_bytes += read_size;
 
         if (nw_send_all(client_socket, &header, sizeof(header)) < 0 ||
             nw_send_all(client_socket, buffer, read_size) < 0) {
@@ -148,6 +170,13 @@ static int handle_get(SOCKET client_socket, const char *path)
     }
 
     fclose(file);
+    log_message(
+        LOG_LEVEL_INFO,
+        "ftp get complete: file=%s bytes=%lu chunks=%lu",
+        path,
+        (unsigned long)total_bytes,
+        (unsigned long)sequence_number
+    );
     return 0;
 }
 
@@ -158,12 +187,16 @@ static int handle_put(SOCKET client_socket, const char *path)
     uint8_t buffer[FTP_DATA_CHUNK_SIZE];
     nw_ssize_t received;
     uint32_t payload_length;
+    const char *server_file_name;
+    size_t total_bytes;
+    uint32_t chunk_count;
 
     if (path == NULL || path[0] == '\0') {
         return send_text_line(client_socket, "ERR missing file name, usage: put <file>");
     }
 
-    file = fopen(path, "wb");
+    server_file_name = ftp_last_path_component(path);
+    file = fopen(server_file_name, "wb");
     if (file == NULL) {
         return send_text_line(client_socket, "ERR file create failed");
     }
@@ -173,6 +206,8 @@ static int handle_put(SOCKET client_socket, const char *path)
         return -1;
     }
 
+    total_bytes = 0;
+    chunk_count = 0;
     for (;;) {
         received = nw_recv_exact(client_socket, &header, sizeof(header));
         if (received != (nw_ssize_t)sizeof(header)) {
@@ -193,7 +228,10 @@ static int handle_put(SOCKET client_socket, const char *path)
                 return -1;
             }
             fwrite(buffer, 1, payload_length, file);
+            total_bytes += payload_length;
         }
+
+        chunk_count++;
 
         if (header.is_last_chunk != 0U) {
             break;
@@ -201,6 +239,13 @@ static int handle_put(SOCKET client_socket, const char *path)
     }
 
     fclose(file);
+    log_message(
+        LOG_LEVEL_INFO,
+        "ftp put complete: file=%s bytes=%lu chunks=%lu",
+        server_file_name,
+        (unsigned long)total_bytes,
+        (unsigned long)chunk_count
+    );
     return send_text_line(client_socket, "OK PUT COMPLETE");
 }
 
