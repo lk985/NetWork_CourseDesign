@@ -8,6 +8,8 @@
 
 #include "utils.h"
 
+#define PACKET_PREVIEW_BYTES 16U
+
 int ipv4_get_version(const ipv4_header_t *header)
 {
     return (header == NULL) ? -1 : ((header->version_ihl >> 4) & 0x0F);
@@ -275,6 +277,43 @@ void format_tcp_flags(uint8_t flags, char *output, size_t output_size)
     }
 }
 
+static void print_payload_preview(const uint8_t *payload, size_t payload_length)
+{
+    size_t index;
+    size_t preview_length;
+
+    if (payload == NULL || payload_length == 0) {
+        printf("Payload preview: <empty>\n");
+        return;
+    }
+
+    preview_length = (payload_length < PACKET_PREVIEW_BYTES) ? payload_length : PACKET_PREVIEW_BYTES;
+
+    printf("Payload preview (hex): ");
+    for (index = 0; index < preview_length; ++index) {
+        printf("%02X ", payload[index]);
+    }
+    if (payload_length > preview_length) {
+        printf("...");
+    }
+    printf("\n");
+
+    printf("Payload preview (ascii): ");
+    for (index = 0; index < preview_length; ++index) {
+        uint8_t ch;
+        ch = payload[index];
+        if (ch >= 32U && ch <= 126U) {
+            putchar((int)ch);
+        } else {
+            putchar('.');
+        }
+    }
+    if (payload_length > preview_length) {
+        printf("...");
+    }
+    printf("\n");
+}
+
 void print_parsed_packet_summary(const parsed_packet_t *packet)
 {
     char source_mac[32];
@@ -309,6 +348,7 @@ void print_parsed_packet_summary(const parsed_packet_t *packet)
             (unsigned int)packet->icmp->code,
             (unsigned int)ntohs(packet->icmp->identifier),
             (unsigned int)ntohs(packet->icmp->sequence_number));
+        print_payload_preview(packet->payload, packet->payload_length);
         return;
     }
 
@@ -321,6 +361,7 @@ void print_parsed_packet_summary(const parsed_packet_t *packet)
             (unsigned long)ntohl(packet->tcp->sequence_number),
             (unsigned long)ntohl(packet->tcp->acknowledgement_number),
             tcp_flags);
+        print_payload_preview(packet->payload, packet->payload_length);
         return;
     }
 
@@ -329,5 +370,6 @@ void print_parsed_packet_summary(const parsed_packet_t *packet)
             (unsigned int)ntohs(packet->udp->source_port),
             (unsigned int)ntohs(packet->udp->destination_port),
             (unsigned int)ntohs(packet->udp->length));
+        print_payload_preview(packet->payload, packet->payload_length);
     }
 }

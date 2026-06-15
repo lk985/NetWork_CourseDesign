@@ -46,10 +46,12 @@ static int run_datalink_demo(void)
 
 static int run_capture_demo(void)
 {
-    uint8_t packet_buffer[sizeof(ethernet_header_t) + sizeof(ipv4_header_t) + sizeof(tcp_header_t)];
+    static const uint8_t demo_payload[] = "HELLO_TCP_DEMO";
+    uint8_t packet_buffer[sizeof(ethernet_header_t) + sizeof(ipv4_header_t) + sizeof(tcp_header_t) + sizeof(demo_payload) - 1U];
     ethernet_header_t *ethernet;
     ipv4_header_t *ipv4;
     tcp_header_t *tcp;
+    uint8_t *payload;
     parsed_packet_t packet;
     packet_parse_result_t result;
 
@@ -72,7 +74,7 @@ static int run_capture_demo(void)
 
     ipv4 = (ipv4_header_t *)(packet_buffer + sizeof(ethernet_header_t));
     ipv4->version_ihl = 0x45;
-    ipv4->total_length = htons((uint16_t)(sizeof(ipv4_header_t) + sizeof(tcp_header_t)));
+    ipv4->total_length = htons((uint16_t)(sizeof(ipv4_header_t) + sizeof(tcp_header_t) + sizeof(demo_payload) - 1U));
     ipv4->ttl = 64;
     ipv4->protocol = IP_PROTO_TCP;
     ipv4->source_ip = inet_addr("192.168.1.10");
@@ -84,8 +86,11 @@ static int run_capture_demo(void)
     tcp->sequence_number = htonl(1001UL);
     tcp->acknowledgement_number = htonl(2002UL);
     tcp->data_offset_reserved = (uint8_t)(5U << 4);
-    tcp->flags = (uint8_t)(TCP_FLAG_SYN | TCP_FLAG_ACK);
+    tcp->flags = (uint8_t)(TCP_FLAG_PSH | TCP_FLAG_ACK);
     tcp->window_size = htons(4096);
+
+    payload = packet_buffer + sizeof(ethernet_header_t) + sizeof(ipv4_header_t) + sizeof(tcp_header_t);
+    memcpy(payload, demo_payload, sizeof(demo_payload) - 1U);
 
     result = parse_ethernet_ipv4_packet(packet_buffer, sizeof(packet_buffer), &packet);
     if (result != PACKET_PARSE_OK) {
