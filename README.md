@@ -1,34 +1,73 @@
-- # NetWork_CourseDesign
+# NetWork_CourseDesign
 
-  
+- Ping 命令实现
+- 基于 TCP 的类 FTP 客户端/服务器，用于二进制文件传输
+- 数据包捕获与 IPv4/TCP/UDP/ICMP 协议解析展示
+- 数据链路层停止等待 / GBN 模拟骨架
 
-  - Ping命令框架
-  - 基于TCP的类FTP客户端/服务器用于二进制传输-
-  - 数据包头定义和解析辅助工具
-  - Datalink停止等待/GBN模拟骨架
+## Build
 
-  ## Build
+```powershell
+cmake -S . -B build-gcc -G Ninja -DCMAKE_C_COMPILER=C:/mingw64/bin/gcc.exe
+cmake --build build-gcc
+```
 
-  
+## Run
 
-  ```
-  cmake -S . -B build
-  cmake --build build
-  ```
+```powershell
+.\build-gcc\network_course_design.exe help
+.\build-gcc\network_course_design.exe ping 127.0.0.1
+.\build-gcc\network_course_design.exe ftp-server
+.\build-gcc\network_course_design.exe ftp-client 127.0.0.1
+.\build-gcc\network_course_design.exe capture demo
+.\build-gcc\network_course_design.exe datalink-demo
+```
 
-  
+## 对于课题2
+默认端口约定为2493
 
-  ## Run
 
-  
+服务端：
 
-  ```
-  .\build\network_course_design.exe help
-  .\build\network_course_design.exe ftp-server 2493
-  .\build\network_course_design.exe ftp-client 127.0.0.1 2493
-  .\build\network_course_design.exe datalink-demo
-  ```
+```powershell
+.\build-gcc\network_course_design.exe ftp-server
+```
 
-  
+客户端：
 
-  “ping”和数据包捕获入口点保留在命令框架中，并可在当前接口之上扩展。
+```powershell
+.\build-gcc\network_course_design.exe ftp-client 127.0.0.1
+```
+
+
+## 对于课题3
+
+离线演示：
+
+```powershell
+.\build-gcc\network_course_design.exe capture demo
+.\build-gcc\network_course_design.exe capture demo tcp
+.\build-gcc\network_course_design.exe capture demo udp
+.\build-gcc\network_course_design.exe capture demo icmp
+```
+
+实时抓包：
+
+```powershell
+.\build-gcc\network_course_design.exe capture 192.168.1.194 tcp
+```
+
+## 对于课题4
+
+数据链路层模拟演示：
+
+```powershell
+.\build-gcc\network_course_design.exe datalink-demo
+```
+
+说明：
+
+- `datalink-demo` 会依次演示停止等待和回退 N 帧（GBN）两种模式。
+- 模拟器会输出发送、ACK、丢帧、ACK 丢失、超时重传等日志。
+- 统计信息中会展示 `sent`、`resent`、`acked`、`delivered`、`frame_drop`、`ack_drop`、`timeout_event` 等字段。
+

@@ -53,23 +53,65 @@ static int packet_matches_protocol_filter(const parsed_packet_t *packet, int pro
 
 static int run_datalink_demo(void)
 {
-    static const uint8_t sample1[] = "frame-one";
-    static const uint8_t sample2[] = "frame-two";
+    static const uint8_t sample1[] = "frame-01 alpha";
+    static const uint8_t sample2[] = "frame-02 beta";
+    static const uint8_t sample3[] = "frame-03 gamma";
+    static const uint8_t sample4[] = "frame-04 delta";
+    static const struct {
+        const uint8_t *payload;
+        size_t length;
+    } samples[] = {
+        { sample1, sizeof(sample1) - 1U },
+        { sample2, sizeof(sample2) - 1U },
+        { sample3, sizeof(sample3) - 1U },
+        { sample4, sizeof(sample4) - 1U }
+    };
+    datalink_mode_t modes[] = { DLINK_MODE_STOP_AND_WAIT, DLINK_MODE_GBN };
+    const char *mode_names[] = { "STOP_AND_WAIT", "GBN" };
     datalink_simulator_t *simulator;
     int status;
+    size_t mode_index;
 
-    simulator = datalink_simulator_create(DLINK_MODE_GBN, DLINK_DEFAULT_WINDOW, 250, 0.20);
-    if (simulator == NULL) {
-        log_message(LOG_LEVEL_ERROR, "failed to create datalink simulator");
-        return 1;
+    status = 0;
+    for (mode_index = 0; mode_index < sizeof(modes) / sizeof(modes[0]); ++mode_index) {
+        size_t sample_index;
+
+        printf("=== datalink %s demo ===\n", mode_names[mode_index]);
+        simulator = datalink_simulator_create(modes[mode_index], DLINK_DEFAULT_WINDOW, 250, 0.20);
+        if (simulator == NULL) {
+            log_message(LOG_LEVEL_ERROR, "failed to create datalink simulator");
+            return 1;
+        }
+
+        for (sample_index = 0; sample_index < sizeof(samples) / sizeof(samples[0]); ++sample_index) {
+            int queue_status;
+
+            queue_status = datalink_simulator_queue_payload(
+                simulator,
+                samples[sample_index].payload,
+                samples[sample_index].length
+            );
+            if (queue_status != 0) {
+                log_message(
+                    LOG_LEVEL_ERROR,
+                    "failed to queue datalink payload %lu status=%d length=%lu",
+                    (unsigned long)sample_index,
+                    queue_status,
+                    (unsigned long)samples[sample_index].length
+                );
+                datalink_simulator_destroy(simulator);
+                return 1;
+            }
+        }
+
+        if (datalink_simulator_run(simulator) != 0) {
+            status = 1;
+        }
+        datalink_simulator_print_stats(simulator);
+        datalink_simulator_destroy(simulator);
+        printf("\n");
     }
 
-    datalink_simulator_queue_payload(simulator, sample1, sizeof(sample1) - 1U);
-    datalink_simulator_queue_payload(simulator, sample2, sizeof(sample2) - 1U);
-
-    status = datalink_simulator_run(simulator);
-    datalink_simulator_print_stats(simulator);
-    datalink_simulator_destroy(simulator);
     return status;
 }
 

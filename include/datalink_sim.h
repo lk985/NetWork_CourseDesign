@@ -19,9 +19,13 @@ typedef struct datalink_frame {
 typedef struct datalink_stats {
     unsigned int sent_frames;
     unsigned int resent_frames;
+    unsigned int acked_frames;
     unsigned int delivered_frames;
     unsigned int dropped_frames;
+    unsigned int dropped_acks;
+    unsigned int timeout_events;
     unsigned int checksum_errors;
+    unsigned int rounds;
 } datalink_stats_t;
 
 typedef struct datalink_simulator datalink_simulator_t;
