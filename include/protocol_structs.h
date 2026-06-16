@@ -114,6 +114,13 @@ typedef struct parsed_packet {
     size_t payload_length;
 } parsed_packet_t;
 
+typedef struct parsed_datalink_frame {
+    const datalink_frame_header_t *header;
+    const uint8_t *payload;
+    size_t payload_length;
+    int checksum_valid;
+} parsed_datalink_frame_t;
+
 int ipv4_get_version(const ipv4_header_t *header);
 int ipv4_get_header_length(const ipv4_header_t *header);
 int tcp_get_header_length(const tcp_header_t *header);
@@ -145,5 +152,15 @@ void format_ipv4_address(uint32_t network_order_ip, char *output, size_t output_
 const char *ip_protocol_name(uint8_t protocol);
 void format_tcp_flags(uint8_t flags, char *output, size_t output_size);
 void print_parsed_packet_summary(const parsed_packet_t *packet);
+const char *datalink_frame_type_name(uint8_t frame_type);
+int parse_datalink_frame_fields(
+    const datalink_frame_header_t *header,
+    const uint8_t *payload,
+    parsed_datalink_frame_t *parsed_frame
+);
+void print_datalink_frame_summary_fields(
+    const datalink_frame_header_t *header,
+    const uint8_t *payload
+);
 
 #endif

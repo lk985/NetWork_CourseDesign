@@ -71,5 +71,6 @@ cmake --build build-gcc
 
 - `datalink-demo` 会依次演示停止等待和回退 N 帧（GBN）两种模式。
 - 也可以手动指定模式和参数：`datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms]`。
+- 运行时会额外打印自定义链路层帧头摘要、CRC 校验结果和载荷预览。
 - 模拟器会输出发送、ACK、丢帧、ACK 丢失、超时重传等日志。
 - 统计信息中会展示 `sent`、`resent`、`acked`、`delivered`、`frame_drop`、`ack_drop`、`timeout_event` 等字段。

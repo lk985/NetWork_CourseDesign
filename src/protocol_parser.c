@@ -260,6 +260,37 @@ const char *ip_protocol_name(uint8_t protocol)
     }
 }
 
+const char *datalink_frame_type_name(uint8_t frame_type)
+{
+    switch (frame_type) {
+        case 0: return "STOP_WAIT";
+        case 1: return "GBN";
+        default: return "UNKNOWN";
+    }
+}
+
+int parse_datalink_frame_fields(
+    const datalink_frame_header_t *header,
+    const uint8_t *payload,
+    parsed_datalink_frame_t *parsed_frame
+)
+{
+    uint32_t computed_crc;
+
+    if (header == NULL || payload == NULL || parsed_frame == NULL) {
+        return 0;
+    }
+
+    computed_crc = compute_crc32(payload, header->payload_length);
+
+    memset(parsed_frame, 0, sizeof(*parsed_frame));
+    parsed_frame->header = header;
+    parsed_frame->payload = payload;
+    parsed_frame->payload_length = header->payload_length;
+    parsed_frame->checksum_valid = (computed_crc == header->checksum) ? 1 : 0;
+    return 1;
+}
+
 void format_tcp_flags(uint8_t flags, char *output, size_t output_size)
 {
     size_t used;
@@ -416,4 +447,28 @@ void print_parsed_packet_summary(const parsed_packet_t *packet)
             (unsigned int)ntohs(packet->udp->length));
         print_payload_preview(packet->payload, packet->payload_length);
     }
+}
+
+void print_datalink_frame_summary_fields(
+    const datalink_frame_header_t *header,
+    const uint8_t *payload
+)
+{
+    parsed_datalink_frame_t parsed_frame;
+
+    if (!parse_datalink_frame_fields(header, payload, &parsed_frame)) {
+        printf("datalink frame summary unavailable\n");
+        return;
+    }
+
+    printf(
+        "Datalink frame: type=%s seq=%u ack=%u payload=%lu crc=%08lX valid=%s\n",
+        datalink_frame_type_name(parsed_frame.header->frame_type),
+        (unsigned int)parsed_frame.header->sequence_number,
+        (unsigned int)parsed_frame.header->acknowledgement_number,
+        (unsigned long)parsed_frame.payload_length,
+        (unsigned long)parsed_frame.header->checksum,
+        parsed_frame.checksum_valid ? "yes" : "no"
+    );
+    print_payload_preview(parsed_frame.payload, parsed_frame.payload_length);
 }

@@ -86,24 +86,10 @@ int datalink_simulator_queue_payload(
 )
 {
     if (simulator == NULL || payload == NULL || payload_length == 0 || payload_length > DLINK_MAX_PAYLOAD_SIZE) {
-        log_message(
-            LOG_LEVEL_ERROR,
-            "queue payload rejected: simulator=%p payload=%p length=%lu max=%u",
-            (void *)simulator,
-            (const void *)payload,
-            (unsigned long)payload_length,
-            (unsigned int)DLINK_MAX_PAYLOAD_SIZE
-        );
         return -1;
     }
 
     if (simulator->queued_count >= DLINK_QUEUE_CAPACITY) {
-        log_message(
-            LOG_LEVEL_ERROR,
-            "queue payload rejected: queue full count=%lu capacity=%u",
-            (unsigned long)simulator->queued_count,
-            (unsigned int)DLINK_QUEUE_CAPACITY
-        );
         return -1;
     }
 
@@ -142,6 +128,9 @@ static int simulate_frame_send(datalink_simulator_t *simulator, size_t frame_ind
         (unsigned int)frame->header.payload_length,
         datalink_mode_name(simulator->mode)
     );
+    if (!retransmission) {
+        print_datalink_frame_summary_fields(&frame->header, frame->payload);
+    }
 
     if (random_unit_value() < simulator->loss_rate) {
         simulator->stats.dropped_frames++;
