@@ -17,7 +17,7 @@ static void print_usage(const char *program_name)
     printf("  %s help\n", program_name);
     printf("  %s ftp-server [port]    (default: %u)\n", program_name, (unsigned int)SERV_PORT);
     printf("  %s ftp-client <host> [port]    (default: %u)\n", program_name, (unsigned int)SERV_PORT);
-    printf("  %s datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms]\n", program_name);
+    printf("  %s datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms] [input_file]\n", program_name);
     printf("  %s ping <host> [-t]\n", program_name);
     printf("  %s capture demo [tcp|udp|icmp]\n", program_name);
     printf("  %s capture <local-ip> [tcp|udp|icmp]\n", program_name);
@@ -70,12 +70,7 @@ static int parse_datalink_mode_text(const char *text, datalink_mode_t *mode)
     return -1;
 }
 
-static int run_one_datalink_demo(
-    datalink_mode_t mode,
-    double loss_rate,
-    size_t window_size,
-    unsigned int timeout_ms
-)
+static int queue_datalink_demo_samples(datalink_simulator_t *simulator)
 {
     static const uint8_t sample1[] = "frame-01 alpha";
     static const uint8_t sample2[] = "frame-02 beta";
@@ -90,9 +85,85 @@ static int run_one_datalink_demo(
         { sample3, sizeof(sample3) - 1U },
         { sample4, sizeof(sample4) - 1U }
     };
+    size_t sample_index;
+
+    if (simulator == NULL) {
+        return -1;
+    }
+
+    for (sample_index = 0; sample_index < sizeof(samples) / sizeof(samples[0]); ++sample_index) {
+        if (datalink_simulator_queue_payload(
+            simulator,
+            samples[sample_index].payload,
+            samples[sample_index].length
+        ) != 0) {
+            log_message(LOG_LEVEL_ERROR, "failed to queue datalink payload %lu", (unsigned long)sample_index);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int queue_datalink_file_chunks(datalink_simulator_t *simulator, const char *file_path)
+{
+    FILE *file;
+    uint8_t buffer[DLINK_MAX_PAYLOAD_SIZE];
+    size_t chunk_index;
+    size_t read_size;
+
+    if (simulator == NULL || file_path == NULL || file_path[0] == '\0') {
+        return -1;
+    }
+
+    file = fopen(file_path, "rb");
+    if (file == NULL) {
+        log_message(LOG_LEVEL_ERROR, "failed to open datalink input file: %s", file_path);
+        return -1;
+    }
+
+    chunk_index = 0;
+    for (;;) {
+        read_size = fread(buffer, 1, sizeof(buffer), file);
+        if (read_size > 0) {
+            if (datalink_simulator_queue_payload(simulator, buffer, read_size) != 0) {
+                log_message(LOG_LEVEL_ERROR, "failed to queue datalink file chunk %lu", (unsigned long)chunk_index);
+                fclose(file);
+                return -1;
+            }
+            chunk_index++;
+        }
+
+        if (read_size < sizeof(buffer)) {
+            if (feof(file) != 0) {
+                break;
+            }
+            log_message(LOG_LEVEL_ERROR, "failed while reading datalink input file: %s", file_path);
+            fclose(file);
+            return -1;
+        }
+    }
+
+    fclose(file);
+    if (chunk_index == 0) {
+        log_message(LOG_LEVEL_ERROR, "datalink input file is empty: %s", file_path);
+        return -1;
+    }
+
+    printf("queued %lu chunks from file: %s\n", (unsigned long)chunk_index, file_path);
+    return 0;
+}
+
+static int run_one_datalink_demo(
+    datalink_mode_t mode,
+    double loss_rate,
+    size_t window_size,
+    unsigned int timeout_ms,
+    const char *input_file_path
+)
+{
     const char *mode_name;
     datalink_simulator_t *simulator;
-    size_t sample_index;
     int status;
 
     mode_name = (mode == DLINK_MODE_GBN) ? "GBN" : "STOP_AND_WAIT";
@@ -104,16 +175,14 @@ static int run_one_datalink_demo(
         return 1;
     }
 
-    for (sample_index = 0; sample_index < sizeof(samples) / sizeof(samples[0]); ++sample_index) {
-        if (datalink_simulator_queue_payload(
-            simulator,
-            samples[sample_index].payload,
-            samples[sample_index].length
-        ) != 0) {
-            log_message(LOG_LEVEL_ERROR, "failed to queue datalink payload %lu", (unsigned long)sample_index);
+    if (input_file_path != NULL) {
+        if (queue_datalink_file_chunks(simulator, input_file_path) != 0) {
             datalink_simulator_destroy(simulator);
             return 1;
         }
+    } else if (queue_datalink_demo_samples(simulator) != 0) {
+        datalink_simulator_destroy(simulator);
+        return 1;
     }
 
     status = datalink_simulator_run(simulator);
@@ -127,7 +196,8 @@ static int run_datalink_demo(
     const char *mode_text,
     double loss_rate,
     size_t window_size,
-    unsigned int timeout_ms
+    unsigned int timeout_ms,
+    const char *input_file_path
 )
 {
     datalink_mode_t modes[] = { DLINK_MODE_STOP_AND_WAIT, DLINK_MODE_GBN };
@@ -145,12 +215,12 @@ static int run_datalink_demo(
             log_message(LOG_LEVEL_ERROR, "unknown datalink mode: %s", mode_text);
             return 1;
         }
-        return run_one_datalink_demo(single_mode, loss_rate, window_size, timeout_ms);
+        return run_one_datalink_demo(single_mode, loss_rate, window_size, timeout_ms, input_file_path);
     }
 
     status = 0;
     for (mode_index = 0; mode_index < sizeof(modes) / sizeof(modes[0]); ++mode_index) {
-        if (run_one_datalink_demo(modes[mode_index], loss_rate, window_size, timeout_ms) != 0) {
+        if (run_one_datalink_demo(modes[mode_index], loss_rate, window_size, timeout_ms, input_file_path) != 0) {
             status = 1;
         }
     }
@@ -498,11 +568,12 @@ int main(int argc, char *argv[])
 
     if (strcmp(argv[1], "datalink-demo") == 0) {
         const char *mode_text;
+        const char *input_file_path;
         double loss_rate;
         size_t window_size;
         unsigned int timeout_ms;
 
-        if (argc > 6) {
+        if (argc > 7) {
             print_usage(argv[0]);
             return 1;
         }
@@ -511,7 +582,8 @@ int main(int argc, char *argv[])
         loss_rate = (argc >= 4) ? atof(argv[3]) : 0.20;
         window_size = (argc >= 5) ? (size_t)atoi(argv[4]) : DLINK_DEFAULT_WINDOW;
         timeout_ms = (argc >= 6) ? (unsigned int)atoi(argv[5]) : 250U;
-        return run_datalink_demo(mode_text, loss_rate, window_size, timeout_ms);
+        input_file_path = (argc >= 7) ? argv[6] : NULL;
+        return run_datalink_demo(mode_text, loss_rate, window_size, timeout_ms, input_file_path);
     }
 
     if (strcmp(argv[1], "ping") == 0) {

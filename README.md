@@ -65,12 +65,14 @@ cmake --build build-gcc
 .\build-gcc\network_course_design.exe datalink-demo
 .\build-gcc\network_course_design.exe datalink-demo gbn 0.35 5 300
 .\build-gcc\network_course_design.exe datalink-demo stopwait 0.00 1 200
+.\build-gcc\network_course_design.exe datalink-demo stopwait 0.00 1 200 data\ftp_sample.txt
 ```
 
 说明：
 
 - `datalink-demo` 会依次演示停止等待和回退 N 帧（GBN）两种模式。
-- 也可以手动指定模式和参数：`datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms]`。
+- 也可以手动指定模式和参数：`datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms] [input_file]`。
+- 如果提供 `input_file`，程序会读取文件内容，按块切片后送入链路层模拟，而不是使用内置字符串样例。
 - 运行时会额外打印自定义链路层帧头摘要、CRC 校验结果和载荷预览。
 - 模拟器会输出发送、ACK、丢帧、ACK 丢失、超时重传等日志。
 - 统计信息中会展示 `sent`、`resent`、`acked`、`delivered`、`frame_drop`、`ack_drop`、`timeout_event` 等字段。
