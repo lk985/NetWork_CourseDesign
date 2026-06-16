@@ -17,7 +17,7 @@ static void print_usage(const char *program_name)
     printf("  %s help\n", program_name);
     printf("  %s ftp-server [port]    (default: %u)\n", program_name, (unsigned int)SERV_PORT);
     printf("  %s ftp-client <host> [port]    (default: %u)\n", program_name, (unsigned int)SERV_PORT);
-    printf("  %s datalink-demo\n", program_name);
+    printf("  %s datalink-demo [stopwait|gbn|all] [loss_rate] [window] [timeout_ms]\n", program_name);
     printf("  %s ping <host> [-t]\n", program_name);
     printf("  %s capture demo [tcp|udp|icmp]\n", program_name);
     printf("  %s capture <local-ip> [tcp|udp|icmp]\n", program_name);
@@ -51,7 +51,31 @@ static int packet_matches_protocol_filter(const parsed_packet_t *packet, int pro
     return packet->ipv4->protocol == (uint8_t)protocol_filter;
 }
 
-static int run_datalink_demo(void)
+static int parse_datalink_mode_text(const char *text, datalink_mode_t *mode)
+{
+    if (text == NULL || mode == NULL) {
+        return -1;
+    }
+
+    if (_stricmp(text, "stopwait") == 0 || _stricmp(text, "stop-and-wait") == 0) {
+        *mode = DLINK_MODE_STOP_AND_WAIT;
+        return 0;
+    }
+
+    if (_stricmp(text, "gbn") == 0) {
+        *mode = DLINK_MODE_GBN;
+        return 0;
+    }
+
+    return -1;
+}
+
+static int run_one_datalink_demo(
+    datalink_mode_t mode,
+    double loss_rate,
+    size_t window_size,
+    unsigned int timeout_ms
+)
 {
     static const uint8_t sample1[] = "frame-01 alpha";
     static const uint8_t sample2[] = "frame-02 beta";
@@ -66,50 +90,69 @@ static int run_datalink_demo(void)
         { sample3, sizeof(sample3) - 1U },
         { sample4, sizeof(sample4) - 1U }
     };
-    datalink_mode_t modes[] = { DLINK_MODE_STOP_AND_WAIT, DLINK_MODE_GBN };
-    const char *mode_names[] = { "STOP_AND_WAIT", "GBN" };
+    const char *mode_name;
     datalink_simulator_t *simulator;
+    size_t sample_index;
+    int status;
+
+    mode_name = (mode == DLINK_MODE_GBN) ? "GBN" : "STOP_AND_WAIT";
+    printf("=== datalink %s demo ===\n", mode_name);
+
+    simulator = datalink_simulator_create(mode, window_size, timeout_ms, loss_rate);
+    if (simulator == NULL) {
+        log_message(LOG_LEVEL_ERROR, "failed to create datalink simulator");
+        return 1;
+    }
+
+    for (sample_index = 0; sample_index < sizeof(samples) / sizeof(samples[0]); ++sample_index) {
+        if (datalink_simulator_queue_payload(
+            simulator,
+            samples[sample_index].payload,
+            samples[sample_index].length
+        ) != 0) {
+            log_message(LOG_LEVEL_ERROR, "failed to queue datalink payload %lu", (unsigned long)sample_index);
+            datalink_simulator_destroy(simulator);
+            return 1;
+        }
+    }
+
+    status = datalink_simulator_run(simulator);
+    datalink_simulator_print_stats(simulator);
+    datalink_simulator_destroy(simulator);
+    printf("\n");
+    return status;
+}
+
+static int run_datalink_demo(
+    const char *mode_text,
+    double loss_rate,
+    size_t window_size,
+    unsigned int timeout_ms
+)
+{
+    datalink_mode_t modes[] = { DLINK_MODE_STOP_AND_WAIT, DLINK_MODE_GBN };
+    datalink_mode_t single_mode;
     int status;
     size_t mode_index;
 
-    status = 0;
-    for (mode_index = 0; mode_index < sizeof(modes) / sizeof(modes[0]); ++mode_index) {
-        size_t sample_index;
+    if (loss_rate < 0.0 || loss_rate > 1.0 || window_size == 0 || timeout_ms == 0U) {
+        log_message(LOG_LEVEL_ERROR, "invalid datalink parameters");
+        return 1;
+    }
 
-        printf("=== datalink %s demo ===\n", mode_names[mode_index]);
-        simulator = datalink_simulator_create(modes[mode_index], DLINK_DEFAULT_WINDOW, 250, 0.20);
-        if (simulator == NULL) {
-            log_message(LOG_LEVEL_ERROR, "failed to create datalink simulator");
+    if (mode_text != NULL && _stricmp(mode_text, "all") != 0) {
+        if (parse_datalink_mode_text(mode_text, &single_mode) != 0) {
+            log_message(LOG_LEVEL_ERROR, "unknown datalink mode: %s", mode_text);
             return 1;
         }
+        return run_one_datalink_demo(single_mode, loss_rate, window_size, timeout_ms);
+    }
 
-        for (sample_index = 0; sample_index < sizeof(samples) / sizeof(samples[0]); ++sample_index) {
-            int queue_status;
-
-            queue_status = datalink_simulator_queue_payload(
-                simulator,
-                samples[sample_index].payload,
-                samples[sample_index].length
-            );
-            if (queue_status != 0) {
-                log_message(
-                    LOG_LEVEL_ERROR,
-                    "failed to queue datalink payload %lu status=%d length=%lu",
-                    (unsigned long)sample_index,
-                    queue_status,
-                    (unsigned long)samples[sample_index].length
-                );
-                datalink_simulator_destroy(simulator);
-                return 1;
-            }
-        }
-
-        if (datalink_simulator_run(simulator) != 0) {
+    status = 0;
+    for (mode_index = 0; mode_index < sizeof(modes) / sizeof(modes[0]); ++mode_index) {
+        if (run_one_datalink_demo(modes[mode_index], loss_rate, window_size, timeout_ms) != 0) {
             status = 1;
         }
-        datalink_simulator_print_stats(simulator);
-        datalink_simulator_destroy(simulator);
-        printf("\n");
     }
 
     return status;
@@ -454,7 +497,21 @@ int main(int argc, char *argv[])
     }
 
     if (strcmp(argv[1], "datalink-demo") == 0) {
-        return run_datalink_demo();
+        const char *mode_text;
+        double loss_rate;
+        size_t window_size;
+        unsigned int timeout_ms;
+
+        if (argc > 6) {
+            print_usage(argv[0]);
+            return 1;
+        }
+
+        mode_text = (argc >= 3) ? argv[2] : "all";
+        loss_rate = (argc >= 4) ? atof(argv[3]) : 0.20;
+        window_size = (argc >= 5) ? (size_t)atoi(argv[4]) : DLINK_DEFAULT_WINDOW;
+        timeout_ms = (argc >= 6) ? (unsigned int)atoi(argv[5]) : 250U;
+        return run_datalink_demo(mode_text, loss_rate, window_size, timeout_ms);
     }
 
     if (strcmp(argv[1], "ping") == 0) {
